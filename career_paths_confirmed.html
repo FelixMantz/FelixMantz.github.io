@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IFoA Career Path Graph — Confirmed Areas Only</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0f1117;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #e2e8f0;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+  #title-block {
+    position: absolute;
+    top: 24px; left: 32px;
+    z-index: 10;
+  }
+  #title-block h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: #f1f5f9;
+  }
+  #title-block p {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+  }
+  #title-block .confirmed-badge {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    background: #1a2e1a;
+    border: 1px solid #34d399;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #34d399;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  #legend {
+    position: absolute;
+    bottom: 28px; left: 32px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+  .legend-circle {
+    border-radius: 50%;
+    background: #4f8ef7;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+  .legend-line {
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, #4f8ef7, #a78bfa);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .legend-line::after {
+    content: '▶';
+    position: absolute;
+    right: -8px;
+    top: -7px;
+    font-size: 9px;
+    color: #a78bfa;
+  }
+  #stats {
+    position: absolute;
+    top: 24px; right: 32px;
+    z-index: 10;
+    text-align: right;
+  }
+  .stat {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+  .stat span {
+    color: #94a3b8;
+    font-weight: 600;
+  }
+  /* Tooltip */
+  #tooltip {
+    position: fixed;
+    background: #1e2433;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+    max-width: 220px;
+  }
+  #tooltip .tt-title {
+    font-weight: 700;
+    font-size: 13px;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+  }
+  #tooltip .tt-row {
+    color: #94a3b8;
+  }
+  #tooltip .tt-row span {
+    color: #e2e8f0;
+    font-weight: 600;
+  }
+  /* SVG elements */
+  .node-circle {
+    cursor: pointer;
+    transition: filter 0.2s;
+  }
+  .node-circle:hover {
+    filter: brightness(1.3);
+  }
+  .node-label {
+    pointer-events: none;
+    user-select: none;
+  }
+  .edge-path {
+    fill: none;
+    transition: opacity 0.2s;
+  }
+  .edge-label {
+    pointer-events: none;
+    user-select: none;
+  }
+  .arrowhead { }
+</style>
+</head>
+<body>
+<div id="title-block">
+  <h1>IFoA Career Path Network</h1>
+  <p>First post-qualification role &amp; career transitions across 95 actuaries</p>
+  <span class="confirmed-badge">✓ Confirmed practice areas only</span>
+</div>
+<div id="stats">
+  <div class="stat">Sample size: <span>125 CVs</span></div>
+  <div class="stat">CVs with confirmed data: <span>84</span></div>
+  <div class="stat">CVs with confirmed data: <span>84</span></div>
+  <div class="stat">Total actuary-years: <span>559.0 yrs</span></div>
+  <div class="stat">Total job changes: <span>108</span></div>
+</div>
+<div id="legend">
+  <div class="legend-item">
+    <div style="width:20px;height:20px;border-radius:50%;border:2px solid #fbbf24;flex-shrink:0;opacity:0.8;"></div>
+    <span>IFoA = qualification event</span>
+  </div>
+  <div class="legend-item">
+    <div style="width:40px;height:0;border-bottom:2px dashed #f59e0b;flex-shrink:0;position:relative;">
+      <span style="position:absolute;right:-8px;top:-7px;font-size:9px;color:#f59e0b;">&#9654;</span>
+    </div>
+    <span>First post-qual role (thickness = count)</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-circle" style="width:14px;height:14px;"></div>
+    <span>Small node = fewer actuary-years</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-circle" style="width:28px;height:28px;"></div>
+    <span>Large node = more actuary-years</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-line"></div>
+    <span>Career transition</span>
+  </div>
+  <div class="legend-item" style="margin-top:4px;">
+    <div style="width:40px;height:3px;background:#4f8ef7;flex-shrink:0;opacity:0.9;border-radius:2px;"></div>
+    <span>Thicker = more transitions</span>
+  <div class="legend-item" style="margin-top:4px;">
+    <div style="width:20px;height:20px;border-radius:50%;border:2px solid #94a3b8;flex-shrink:0;opacity:0.7;position:relative;">
+      <span style="position:absolute;top:-8px;right:-8px;font-size:9px;color:#94a3b8;">&#9654;</span>
+    </div>
+    <span>Loop = same-area role change</span>
+  </div>
+</div>
+<div id="tooltip"></div>
+<svg id="graph"></svg>
+<script>
+const graphData = {
+  "nodes": [
+    { "id": "IFoA",                         "actuary_years": 0,     "is_ifoa": true },
+    { "id": "General Insurance",                           "actuary_years": 140.5  },
+    { "id": "Life",                                        "actuary_years": 130.9  },
+    { "id": "Risk Management",                             "actuary_years": 102.1  },
+    { "id": "Finance and Investment",                      "actuary_years": 91.6  },
+    { "id": "Pensions",                                    "actuary_years": 65.1  },
+    { "id": "AI and Emerging Technologies",                "actuary_years": 15.8  },
+    { "id": "Health and Care",                             "actuary_years": 13.1  }
+  ],
+    "edges": [
+    // ── IFoA → first post-qual role (confirmed only; count = graduates) ──,
+    { "source": "IFoA", "target": "General Insurance",                         "count": 26, "is_ifoa_edge": true },
+    { "source": "IFoA", "target": "Life",                                      "count": 26, "is_ifoa_edge": true },
+    { "source": "IFoA", "target": "Pensions",                                  "count": 12, "is_ifoa_edge": true },
+    { "source": "IFoA", "target": "Finance and Investment",                    "count": 7, "is_ifoa_edge": true },
+    { "source": "IFoA", "target": "Risk Management",                           "count": 5, "is_ifoa_edge": true },
+    { "source": "IFoA", "target": "AI and Emerging Technologies",              "count": 2, "is_ifoa_edge": true },
+    { "source": "IFoA", "target": "Health and Care",                           "count": 2, "is_ifoa_edge": true },
+    // ── cross-area transitions (propensity = count / all departures incl. same-area) ──,
+    { "source": "Pensions",                                      "target": "Life",                                        "count": 4 },
+    { "source": "General Insurance",                             "target": "Risk Management",                             "count": 4 },
+    { "source": "Life",                                          "target": "AI and Emerging Technologies",                "count": 2 },
+    { "source": "Life",                                          "target": "Pensions",                                    "count": 2 },
+    { "source": "Life",                                          "target": "Risk Management",                             "count": 2 },
+    { "source": "Life",                                          "target": "Finance and Investment",                      "count": 2 },
+    { "source": "Risk Management",                               "target": "General Insurance",                           "count": 2 },
+    { "source": "Risk Management",                               "target": "Life",                                        "count": 1 },
+    { "source": "Finance and Investment",                        "target": "Risk Management",                             "count": 1 },
+    { "source": "Pensions",                                      "target": "Finance and Investment",                      "count": 1 },
+    { "source": "Health and Care",                               "target": "General Insurance",                           "count": 1 },
+    { "source": "Life",                                          "target": "General Insurance",                           "count": 1 }
+  ],
+  "self_loops": [
+    { "id": "General Insurance",                         "count": 25  },
+    { "id": "Life",                                      "count": 22  },
+    { "id": "Finance and Investment",                    "count": 12  },
+    { "id": "Risk Management",                           "count": 11  },
+    { "id": "AI and Emerging Technologies",              "count": 6  },
+    { "id": "Pensions",                                  "count": 5  },
+    { "id": "Health and Care",                           "count": 4  }
+  ],
+  "total_cvs": 84
+};
+// ── Dimensions ──────────────────────────────────────────────────────────────
+const W = window.innerWidth;
+const H = window.innerHeight;
+const svg = d3.select("#graph")
+  .attr("width", W)
+  .attr("height", H);
+// ── Defs: arrowhead markers (one per stroke width bucket) ───────────────────
+const defs = svg.append("defs");
+const allCounts = [
+  ...graphData.edges.map(e => e.count),
+  ...graphData.self_loops.map(s => s.count)
+];
+const maxCount = d3.max(allCounts);
+
+// ── Per-source bucketed opacity (4 buckets per source node) ──────────────
+// Opacity encodes transition force: fully opaque = most common, faint = rare.
+const BUCKET_OPACITIES = [0.12, 0.32, 0.62, 1.0];
+
+// Build total departures per source (edges + self-loops) for force calculation
+const departureTotals = {};
+graphData.edges.forEach(e => {
+  const src = e.source;
+  departureTotals[src] = (departureTotals[src] || 0) + e.count;
+});
+graphData.self_loops.forEach(s => {
+  departureTotals[s.id] = (departureTotals[s.id] || 0) + s.count;
+});
+
+// Build bucketed opacity lookup keyed by "source->target"
+const edgeOpacityMap = {};
+const edgeForceMap = {};
+
+// Group edges by source
+const edgesBySource = {};
+graphData.edges.forEach(e => {
+  if (!edgesBySource[e.source]) edgesBySource[e.source] = [];
+  edgesBySource[e.source].push(e);
+});
+
+Object.entries(edgesBySource).forEach(([src, srcEdges]) => {
+  const total = departureTotals[src] || 1;
+  const sorted = [...srcEdges].sort((a, b) => b.count - a.count);
+  const n = sorted.length;
+  sorted.forEach((e, i) => {
+    const bucket = Math.min(3, Math.floor(i / n * 4));
+    const opacityIdx = 3 - bucket;
+    const key = `${e.source}->${e.target}`;
+    edgeOpacityMap[key] = BUCKET_OPACITIES[opacityIdx];
+    edgeForceMap[key] = +(e.count / total).toFixed(2);
+  });
+});
+
+function getEdgeOpacity(d) {
+  const src = d.source.id || d.source;
+  const tgt = d.target.id || d.target;
+  return edgeOpacityMap[`${src}->${tgt}`] || BUCKET_OPACITIES[0];
+}
+function getEdgeForce(d) {
+  const src = d.source.id || d.source;
+  const tgt = d.target.id || d.target;
+  return edgeForceMap[`${src}->${tgt}`] || 0;
+}
+
+// IFoA edge opacities: bucket within IFoA outgoing edges
+const ifoaEdgesRaw = graphData.edges.filter(e => e.is_ifoa_edge);
+const ifoaTotal = ifoaEdgesRaw.reduce((s, e) => s + e.count, 0);
+const ifoaSorted = [...ifoaEdgesRaw].sort((a, b) => b.count - a.count);
+const ifoaOpacityMap = {};
+const ifoaForceMap = {};
+ifoaSorted.forEach((e, i) => {
+  const bucket = Math.min(3, Math.floor(i / ifoaSorted.length * 4));
+  ifoaOpacityMap[e.target] = BUCKET_OPACITIES[3 - bucket];
+  ifoaForceMap[e.target] = +(e.count / ifoaTotal).toFixed(2);
+});
+
+function getIfoaEdgeOpacity(d) {
+  const tgt = d.target.id || d.target;
+  return ifoaOpacityMap[tgt] || BUCKET_OPACITIES[0];
+}
+function getIfoaEdgeForce(d) {
+  const tgt = d.target.id || d.target;
+  return ifoaForceMap[tgt] || 0;
+}
+
+// Create markers for multiple sizes
+[1, 2, 3, 4, 5].forEach(w => {
+  defs.append("marker")
+    .attr("id", `arrow-${w}`)
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 10)
+    .attr("refY", 0)
+    .attr("markerWidth", 6)
+    .attr("markerHeight", 6)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5")
+    .attr("fill", "#6d8fb5")
+    .attr("opacity", 0.85);
+});
+// Glow filter for nodes
+const filter = defs.append("filter").attr("id", "glow");
+filter.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "coloredBlur");
+const feMerge = filter.append("feMerge");
+feMerge.append("feMergeNode").attr("in", "coloredBlur");
+feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+// ── Colour palette ───────────────────────────────────────────────────────────
+const palette = {
+  "Life":                         "#4f8ef7",
+  "Pensions":                     "#a78bfa",
+  "General Insurance":            "#34d399",
+  "Risk Management":              "#f59e0b",
+  "AI and Emerging Technologies": "#f472b6",
+  "Finance and Investment":       "#38bdf8",
+  "Health and Care":              "#fb923c"
+};
+// ── Node radius scale ────────────────────────────────────────────────────────
+const maxYears = d3.max(graphData.nodes, d => d.actuary_years);
+const radiusScale = d3.scaleSqrt()
+  .domain([0, maxYears])
+  .range([18, 80]);
+// ── Tooltip helper ───────────────────────────────────────────────────────────
+const tooltip = d3.select("#tooltip");
+function showTooltip(html, event) {
+  tooltip.html(html)
+    .style("opacity", 1)
+    .style("left", (event.clientX + 16) + "px")
+    .style("top",  (event.clientY - 10) + "px");
+}
+function hideTooltip() {
+  tooltip.style("opacity", 0);
+}
+// ── Build simulation ─────────────────────────────────────────────
+const nodes = graphData.nodes.map(d => ({ ...d }));
+const edges = graphData.edges.filter(e => !e.is_ifoa_edge).map(d => ({ ...d }));
+const ifoa_edges = graphData.edges.filter(e => e.is_ifoa_edge).map(d => ({ ...d }));
+const all_edges = [...ifoa_edges, ...edges];
+
+// Fix IFoA node at centre
+const ifoa_node = nodes.find(d => d.is_ifoa);
+if (ifoa_node) { ifoa_node.fx = W / 2; ifoa_node.fy = H / 2; }
+
+const simulation = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(all_edges)
+    .id(d => d.id)
+    .distance(d => {
+      if (d.source.is_ifoa || d.target.is_ifoa) return 280;
+      const sr = radiusScale(d.source.actuary_years || 0);
+      const tr = radiusScale(d.target.actuary_years || 0);
+      return sr + tr + 80;
+    })
+    .strength(0.5))
+  .force("charge", d3.forceManyBody().strength(-1100))
+  .force("collision", d3.forceCollide().radius(d => d.is_ifoa ? 60 : radiusScale(d.actuary_years || 0) + 30));
+
+// ── Render layer: edges first, then nodes ────────────────────────────────────────────
+const edgeGroup = svg.append("g").attr("class", "edges");
+const nodeGroup = svg.append("g").attr("class", "nodes");
+
+// IFoA edges
+const ifoaEdgePaths = edgeGroup.selectAll("path.ifoa-edge")
+  .data(ifoa_edges)
+  .join("path")
+  .attr("class", "edge-path ifoa-edge")
+  .attr("stroke", "#f59e0b")
+  .attr("stroke-width", 2)
+  .attr("opacity", d => getIfoaEdgeOpacity(d))
+  .attr("stroke-dasharray", "6 3")
+  .attr("marker-end", "url(#arrow-2)")
+  .on("mouseover", function(event, d) {
+    d3.select(this).attr("opacity", 1).attr("stroke-dasharray", null);
+    const force = getIfoaEdgeForce(d);
+    showTooltip(
+      `<div class="tt-title">IFoA → ${d.target.id}</div>
+       <div class="tt-row">Transition force: <span>${(+force).toFixed(2)}</span></div>`,
+      event
+    );
+  })
+  .on("mousemove", (event) => {
+    tooltip.style("left", (event.clientX + 16) + "px").style("top", (event.clientY - 10) + "px");
+  })
+  .on("mouseout", function(event, d) {
+    d3.select(this).attr("opacity", getIfoaEdgeOpacity(d)).attr("stroke-dasharray", "6 3");
+    hideTooltip();
+  });
+
+const ifoaEdgeLabels = edgeGroup.selectAll("text.ifoa-edge-label")
+  .data(ifoa_edges)
+  .join("text")
+  .attr("class", "edge-label ifoa-edge-label")
+  .attr("text-anchor", "middle")
+  .attr("font-size", "11px")
+  .attr("fill", "#f59e0b")
+  .attr("font-weight", "600")
+  .attr("dy", -5)
+  .text("");  // thickness encodes count
+
+// Regular cross-area edges
+const edgePaths = edgeGroup.selectAll("path.career-edge")
+  .data(edges)
+  .join("path")
+  .attr("class", "edge-path career-edge")
+  .attr("stroke", "#4a6080")
+  .attr("stroke-width", 2)
+  .attr("opacity", d => getEdgeOpacity(d))
+  .attr("marker-end", "url(#arrow-2)")
+  .on("mouseover", function(event, d) {
+    d3.select(this).attr("stroke", "#7eaadd").attr("opacity", 1);
+    const force = getEdgeForce(d);
+    showTooltip(
+      `<div class="tt-title">${d.source.id} → ${d.target.id}</div>
+       <div class="tt-row">Transition force: <span>${(+force).toFixed(2)}</span></div>`,
+      event
+    );
+  })
+  .on("mousemove", (event) => {
+    tooltip.style("left", (event.clientX + 16) + "px").style("top", (event.clientY - 10) + "px");
+  })
+  .on("mouseout", function(event, d) {
+    d3.select(this).attr("stroke", "#4a6080").attr("opacity", getEdgeOpacity(d));
+    hideTooltip();
+  });
+
+const edgeLabels = edgeGroup.selectAll("text.career-edge-label")
+  .data(edges)
+  .join("text")
+  .attr("class", "edge-label career-edge-label")
+  .attr("text-anchor", "middle")
+  .attr("font-size", "11px")
+  .attr("fill", "#7eaadd")
+  .attr("font-weight", "600")
+  .attr("dy", -5)
+  .text("");  // thickness encodes count
+
+// ── Self-loops (same practice area transitions) ──────────────────
+const selfLoopMaxCount = d3.max(graphData.self_loops, d => d.count);
+const selfLoopStrokeScale = d3.scaleLinear().domain([1, selfLoopMaxCount]).range([1, 4]);
+const selfLoopMap = {};
+graphData.self_loops.forEach(s => { selfLoopMap[s.id] = s; });
+const selfLoopGroup = svg.append('g').attr('class', 'self-loops');
+
+// ── Nodes ────────────────────────────────────────────────────
+const nodeContainers = nodeGroup.selectAll("g.node")
+  .data(nodes)
+  .join("g")
+  .attr("class", "node")
+  .call(d3.drag()
+    .on("start", (event, d) => {
+      if (d.is_ifoa) return;
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      d.fx = d.x; d.fy = d.y;
+    })
+    .on("drag", (event, d) => {
+      if (d.is_ifoa) return;
+      d.fx = event.x; d.fy = event.y;
+    })
+    .on("end", (event, d) => {
+      if (d.is_ifoa) return;
+      if (!event.active) simulation.alphaTarget(0);
+      d.fx = null; d.fy = null;
+    })
+  );
+
+nodeContainers.append("circle")
+  .attr("r", d => d.is_ifoa ? 46 : radiusScale(d.actuary_years || 0) + 6)
+  .attr("fill", "none")
+  .attr("stroke", d => d.is_ifoa ? "#fbbf24" : (palette[d.id] || "#4f8ef7"))
+  .attr("stroke-width", d => d.is_ifoa ? 2 : 1)
+  .attr("opacity", d => d.is_ifoa ? 0.5 : 0.25);
+
+nodeContainers.append("circle")
+  .attr("class", "node-circle")
+  .attr("r", d => d.is_ifoa ? 40 : radiusScale(d.actuary_years || 0))
+  .attr("fill", d => d.is_ifoa ? "#fbbf24" : (palette[d.id] || "#4f8ef7"))
+  .attr("fill-opacity", d => d.is_ifoa ? 0.12 : 0.18)
+  .attr("stroke", d => d.is_ifoa ? "#fbbf24" : (palette[d.id] || "#4f8ef7"))
+  .attr("stroke-width", d => d.is_ifoa ? 2.5 : 2)
+  .attr("filter", "url(#glow)")
+  .on("mouseover", function(event, d) {
+    d3.select(this).attr("fill-opacity", 0.35);
+    if (d.is_ifoa) {
+      showTooltip(
+        `<div class="tt-title">IFoA Qualification</div>
+         <div class="tt-row">Sample: <span>95 CVs</span></div>
+         <div class="tt-row">Mapped first roles: <span>49</span></div>
+         <div class="tt-row">Confirmed practice area only</div>`,
+        event
+      );
+    } else {
+      showTooltip(
+        `<div class="tt-title">${d.id}</div>
+         <div class="tt-row">Actuary-years: <span>${Math.round(d.actuary_years)}</span></div>`,
+        event
+      );
+    }
+  })
+  .on("mousemove", (event) => {
+    tooltip.style("left", (event.clientX + 16) + "px").style("top", (event.clientY - 10) + "px");
+  })
+  .on("mouseout", function(event, d) {
+    d3.select(this).attr("fill-opacity", d.is_ifoa ? 0.12 : 0.18);
+    hideTooltip();
+  });
+
+function wrapLabel(id) {
+  if (id === "IFoA") return ["IFoA", "Qualified"];
+  const parts = id.split(" ");
+  if (parts.length <= 2) return [id];
+  if (id === "AI and Emerging Technologies") return ["AI & Emerging", "Technologies"];
+  if (id === "Finance and Investment") return ["Finance &", "Investment"];
+  if (id === "General Insurance") return ["General", "Insurance"];
+  return [id];
+}
+
+nodeContainers.each(function(d) {
+  const g = d3.select(this);
+  const lines = wrapLabel(d.id);
+  const r = d.is_ifoa ? 40 : radiusScale(d.actuary_years || 0);
+  const lineH = 14;
+  const totalH = lines.length * lineH;
+  const startY = -(totalH / 2) + lineH * 0.6;  // 0.6em offset centres text visually
+  lines.forEach((line, i) => {
+    g.append("text")
+      .attr("class", "node-label")
+      .attr("text-anchor", "middle")
+      .attr("y", startY + i * lineH)
+      .attr("font-size", d.is_ifoa ? "15px" : (r > 50 ? "13px" : r > 30 ? "12px" : "11px"))
+      .attr("font-weight", "700")
+      .style("fill", d.is_ifoa ? "#fbbf24" : (palette[d.id] || "#f1f5f9"))
+      .text(line);
+  });
+});
+// ── Tick ─────────────────────────────────────────────
+function edgePath(d, sourceR, targetR, curve) {
+  const dx = d.target.x - d.source.x;
+  const dy = d.target.y - d.source.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const sx = d.source.x + dx / dist * (sourceR + 3);
+  const sy = d.source.y + dy / dist * (sourceR + 3);
+  const ex = d.target.x - dx / dist * (targetR + 12);
+  const ey = d.target.y - dy / dist * (targetR + 12);
+  if (!curve) return `M${sx},${sy} L${ex},${ey}`;
+  const mx = (sx + ex) / 2 - dy / dist * 40;
+  const my = (sy + ey) / 2 + dx / dist * 40;
+  return `M${sx},${sy} Q${mx},${my} ${ex},${ey}`;
+}
+function edgeMidX(d, curve) {
+  const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  return curve ? (d.source.x + d.target.x) / 2 - dy / dist * 40 : (d.source.x + d.target.x) / 2;
+}
+function edgeMidY(d, curve) {
+  const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  return curve ? (d.source.y + d.target.y) / 2 + dx / dist * 40 : (d.source.y + d.target.y) / 2;
+}
+
+simulation.on("tick", () => {
+  ifoaEdgePaths.attr("d", d => edgePath(d, 40, radiusScale(d.target.actuary_years || 0), false));
+  ifoaEdgeLabels.attr("x", d => edgeMidX(d, false)).attr("y", d => edgeMidY(d, false));
+  edgePaths.attr("d", d => edgePath(d, radiusScale(d.source.actuary_years || 0), radiusScale(d.target.actuary_years || 0), true));
+  edgeLabels.attr("x", d => edgeMidX(d, true)).attr("y", d => edgeMidY(d, true));
+  nodeContainers.attr("transform", d => `translate(${d.x},${d.y})`);
+
+  // Self-loops: circular arcs on each practice-area node
+  const selfLoopData = nodes.filter(d => !d.is_ifoa && selfLoopMap[d.id]);
+
+  const loops = selfLoopGroup.selectAll("g.self-loop")
+    .data(selfLoopData, d => d.id);
+  const loopsEnter = loops.enter().append("g").attr("class", "self-loop");
+  loopsEnter.append("path").attr("class", "self-loop-path").attr("fill", "none").attr("stroke-linecap", "round");
+  loopsEnter.append("path").attr("class", "self-loop-arrow");
+  loopsEnter.append("text").attr("class", "self-loop-label").attr("text-anchor", "middle").attr("dominant-baseline", "central").attr("font-size", "9px").attr("font-weight", "700").style("pointer-events", "none");
+  const loopsAll = loopsEnter.merge(loops);
+
+  loopsAll.each(function(d) {
+    const g   = d3.select(this);
+    const sl  = selfLoopMap[d.id];
+    const r   = radiusScale(d.actuary_years || 0);
+    const selfForceVal = sl.count / (departureTotals[d.id] || 1);
+    const allSelfForces = graphData.self_loops.map(s => s.count / (departureTotals[s.id] || 1));
+    const maxSelfForce = Math.max(...allSelfForces);
+    const selfBucket = Math.min(3, Math.floor(selfForceVal / maxSelfForce * 4));
+    const selfOpacity = BUCKET_OPACITIES[selfBucket];
+
+    // Two attachment points on node circumference, spread ±30° around top-right (-45°).
+    const midAngle = -Math.PI / 4;
+    const spread   = Math.PI / 6;
+    const a1 = midAngle - spread;
+    const a2 = midAngle + spread;
+    const p1x = d.x + r * Math.cos(a1);
+    const p1y = d.y + r * Math.sin(a1);
+    const p2x = d.x + r * Math.cos(a2);
+    const p2y = d.y + r * Math.sin(a2);
+    const bulge    = r * 0.85;
+    const outX     = d.x + (r + bulge) * Math.cos(midAngle);
+    const outY     = d.y + (r + bulge) * Math.sin(midAngle);
+    const cpSpread = r * 0.3;
+    const cp1x = outX + cpSpread * Math.cos(midAngle - Math.PI / 2);
+    const cp1y = outY + cpSpread * Math.sin(midAngle - Math.PI / 2);
+    const cp2x = outX + cpSpread * Math.cos(midAngle + Math.PI / 2);
+    const cp2y = outY + cpSpread * Math.sin(midAngle + Math.PI / 2);
+
+    // Same colour/width as career edges; SVG marker arrow
+    g.select(".self-loop-path")
+      .attr("d", `M${p1x},${p1y} C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2x},${p2y}`)
+      .attr("stroke", "#4a6080")
+      .attr("stroke-width", 2)
+      .attr("opacity", selfOpacity)
+      .attr("marker-end", "url(#arrow-2)");
+
+    // Hide the separate hand-drawn arrow (marker does the job now)
+    g.select(".self-loop-arrow").attr("d", "");
+  });
+
+  // Hover on whole group — matches career edge behaviour exactly
+  loopsAll
+    .on("mouseover", function(event, d) {
+      d3.select(this).select(".self-loop-path")
+        .attr("stroke", "#7eaadd").attr("opacity", 1);
+      const sl = selfLoopMap[d.id];
+      const selfForce = +(sl.count / (departureTotals[d.id] || 1)).toFixed(2);
+      showTooltip(
+        `<div class="tt-title">${d.id} → ${d.id}</div>
+         <div class="tt-row">Transition force: <span>${(+selfForce).toFixed(2)}</span></div>`,
+        event
+      );
+    })
+    .on("mousemove", (event) => {
+      tooltip.style("left", (event.clientX + 16) + "px").style("top", (event.clientY - 10) + "px");
+    })
+    .on("mouseout", function(event, d) {
+      const sl2 = selfLoopMap[d.id];
+      const f2 = sl2.count / (departureTotals[d.id] || 1);
+      const mx = Math.max(...graphData.self_loops.map(s => s.count / (departureTotals[s.id] || 1)));
+      const bk = Math.min(3, Math.floor(f2 / mx * 4));
+      d3.select(this).select(".self-loop-path")
+        .attr("stroke", "#4a6080").attr("opacity", BUCKET_OPACITIES[bk]);
+      hideTooltip();
+    });});
+// ── Resize ───────────────────────────────────────────
+window.addEventListener("resize", () => {
+  const W2 = window.innerWidth, H2 = window.innerHeight;
+  svg.attr("width", W2).attr("height", H2);
+  if (ifoa_node) { ifoa_node.fx = W2 / 2; ifoa_node.fy = H2 / 2; }
+  simulation.alpha(0.3).restart();
+});
+
+
+</script>
+</body>
+</html>
