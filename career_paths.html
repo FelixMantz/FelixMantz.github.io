@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IFoA Career Path Graph</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0f1117;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #e2e8f0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 100vh;
+    width: 100vw;
+    padding-bottom: 180px;
+  }
+
+  #title-block {
+    position: absolute;
+    top: 24px; left: 32px;
+    z-index: 200;
+  }
+  #title-block h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: #f1f5f9;
+  }
+  #title-block p {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+  }
+
+  #legend {
+    position: absolute;
+    bottom: 28px; left: 32px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: #94a3b8;
+  }
+  .legend-circle {
+    border-radius: 50%;
+    background: #4f8ef7;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+  .legend-line {
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, #4f8ef7, #a78bfa);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .legend-line::after {
+    content: '▶';
+    position: absolute;
+    right: -8px;
+    top: -7px;
+    font-size: 9px;
+    color: #a78bfa;
+  }
+
+  #stats {
+    position: absolute;
+    top: 24px; right: 32px;
+    z-index: 10;
+    text-align: right;
+  }
+  .stat {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+  .stat span {
+    color: #94a3b8;
+    font-weight: 600;
+  }
+
+  /* Tooltip */
+  #tooltip {
+    position: fixed;
+    background: #1e2433;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+    max-width: 220px;
+  }
+  #tooltip .tt-title {
+    font-weight: 700;
+    font-size: 13px;
+    color: #f1f5f9;
+    margin-bottom: 4px;
+  }
+  #tooltip .tt-row {
+    color: #94a3b8;
+  }
+  #tooltip .tt-row span {
+    color: #e2e8f0;
+    font-weight: 600;
+  }
+
+  /* SVG elements */
+  .node-circle {
+    cursor: pointer;
+    transition: filter 0.2s;
+  }
+  .node-circle:hover {
+    filter: brightness(1.3);
+  }
+  .node-label {
+    pointer-events: none;
+    user-select: none;
+  }
+  .edge-path {
+    fill: none;
+    transition: opacity 0.2s;
+  }
+  .edge-label {
+    pointer-events: none;
+    user-select: none;
+  }
+  .arrowhead { }
+  #graph {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1;
+  }
+  /* Dimension selector */
+  #dimension-selector {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #dimension-selector label {
+    font-size: 11px;
+    color: #64748b;
+    white-space: nowrap;
+  }
+  #dimension-select {
+    background: #1e2433;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #cbd5e1;
+    font-size: 12px;
+    font-family: inherit;
+    padding: 4px 8px;
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+    transition: border-color 0.15s;
+  }
+  #dimension-select:hover { border-color: #4f8ef7; }
+  #dimension-select option { background: #1e2433; }
+</style>
+</head>
+<body>
+
+<div id="title-block">
+  <h1>IFoA Career Path Network</h1>
+  <div id="dimension-selector">
+    <label for="dimension-select">Nodes represent:</label>
+    <select id="dimension-select">
+      <option value="practice_area" selected>Practice area</option>
+      <option value="industry">Industry</option>
+      <option value="company_size">Company size</option>
+      <option value="role_type">Role type</option>
+    </select>
+  </div>
+</div>
+
+<div id="stats">
+  <div class="stat">Sample size: <span id="stat-cvs">104 CVs</span></div>
+  <div class="stat">Total actuary-years: <span id="stat-years">966.0 yrs</span></div>
+  <div class="stat">Total job changes: <span id="stat-changes">227</span></div>
+</div>
+
+<div id="legend">
+  <div class="legend-item">
+    <div style="width:20px;height:20px;border-radius:50%;border:2px solid #fbbf24;flex-shrink:0;opacity:0.8;"></div>
+    <span>IFoA = qualification event</span>
+  </div>
+  <div class="legend-item">
+    <div style="width:40px;height:0;border-bottom:2px dashed #f59e0b;flex-shrink:0;position:relative;">
+      <span style="position:absolute;right:-8px;top:-7px;font-size:9px;color:#f59e0b;">&#9654;</span>
+    </div>
+    <span>First post-qual role (thickness = count)</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-circle" style="width:14px;height:14px;"></div>
+    <span>Small node = fewer actuary-years</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-circle" style="width:28px;height:28px;"></div>
+    <span>Large node = more actuary-years</span>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+<svg id="graph"></svg>
+
+<script>
+const allGraphData = {"practice_area": {"nodes": [{"id": "IFoA", "actuary_years": 0, "is_ifoa": true}, {"id": "Life", "actuary_years": 217.9}, {"id": "General Insurance", "actuary_years": 198.5}, {"id": "Finance and Investment", "actuary_years": 135.5}, {"id": "Risk Management", "actuary_years": 131.4}, {"id": "Pensions", "actuary_years": 128.7}, {"id": "Actuarial Consulting (practice area unknown)", "actuary_years": 69.7}, {"id": "Education / Academia", "actuary_years": 24.0}, {"id": "Technology", "actuary_years": 21.3}, {"id": "Health and Care", "actuary_years": 17.7}, {"id": "AI and Emerging Technologies", "actuary_years": 15.8}, {"id": "Regulatory / Public Policy", "actuary_years": 5.5}], "edges": [{"source": "IFoA", "target": "Life", "count": 37, "is_ifoa_edge": true}, {"source": "IFoA", "target": "General Insurance", "count": 29, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Pensions", "count": 16, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Finance and Investment", "count": 7, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Actuarial Consulting (practice area unknown)", "count": 5, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Risk Management", "count": 4, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Health and Care", "count": 3, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Regulatory / Public Policy", "count": 1, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Technology", "count": 1, "is_ifoa_edge": true}, {"source": "IFoA", "target": "AI and Emerging Technologies", "count": 1, "is_ifoa_edge": true}, {"source": "Pensions", "target": "Life", "count": 5}, {"source": "General Insurance", "target": "Risk Management", "count": 5}, {"source": "Life", "target": "Risk Management", "count": 5}, {"source": "Life", "target": "Finance and Investment", "count": 5}, {"source": "Life", "target": "Actuarial Consulting (practice area unknown)", "count": 4}, {"source": "Risk Management", "target": "Life", "count": 4}, {"source": "Risk Management", "target": "General Insurance", "count": 4}, {"source": "Finance and Investment", "target": "Risk Management", "count": 3}, {"source": "Pensions", "target": "Risk Management", "count": 2}, {"source": "Risk Management", "target": "Pensions", "count": 2}, {"source": "Life", "target": "AI and Emerging Technologies", "count": 2}, {"source": "Actuarial Consulting (practice area unknown)", "target": "Pensions", "count": 2}, {"source": "General Insurance", "target": "Actuarial Consulting (practice area unknown)", "count": 2}, {"source": "Actuarial Consulting (practice area unknown)", "target": "General Insurance", "count": 2}, {"source": "Life", "target": "Pensions", "count": 2}, {"source": "General Insurance", "target": "Finance and Investment", "count": 2}, {"source": "Pensions", "target": "Education / Academia", "count": 2}, {"source": "Regulatory / Public Policy", "target": "Risk Management", "count": 2}, {"source": "Risk Management", "target": "Technology", "count": 2}, {"source": "Actuarial Consulting (practice area unknown)", "target": "Life", "count": 2}, {"source": "Pensions", "target": "Finance and Investment", "count": 2}, {"source": "Risk Management", "target": "Education / Academia", "count": 2}, {"source": "Finance and Investment", "target": "Pensions", "count": 2}, {"source": "Education / Academia", "target": "Pensions", "count": 1}, {"source": "Actuarial Consulting (practice area unknown)", "target": "Regulatory / Public Policy", "count": 1}, {"source": "Finance and Investment", "target": "AI and Emerging Technologies", "count": 1}, {"source": "Finance and Investment", "target": "Life", "count": 1}, {"source": "Life", "target": "Technology", "count": 1}, {"source": "Technology", "target": "General Insurance", "count": 1}, {"source": "Education / Academia", "target": "Actuarial Consulting (practice area unknown)", "count": 1}, {"source": "Life", "target": "Health and Care", "count": 1}, {"source": "Finance and Investment", "target": "Technology", "count": 1}, {"source": "Health and Care", "target": "General Insurance", "count": 1}, {"source": "Technology", "target": "Actuarial Consulting (practice area unknown)", "count": 1}, {"source": "Education / Academia", "target": "Risk Management", "count": 1}, {"source": "Life", "target": "General Insurance", "count": 1}, {"source": "Health and Care", "target": "Education / Academia", "count": 1}], "self_loops": [{"id": "Life", "count": 46}, {"id": "General Insurance", "count": 43}, {"id": "Finance and Investment", "count": 22}, {"id": "Pensions", "count": 13}, {"id": "Risk Management", "count": 11}, {"id": "AI and Emerging Technologies", "count": 6}, {"id": "Health and Care", "count": 4}, {"id": "Actuarial Consulting (practice area unknown)", "count": 2}, {"id": "Education / Academia", "count": 1}], "total_cvs": 104, "total_actuary_years": 966.0, "total_job_changes": 227}, "industry": {"nodes": [{"id": "IFoA", "actuary_years": 0, "is_ifoa": true}, {"id": "Insurance", "actuary_years": 366.2}, {"id": "Consulting", "actuary_years": 289.5}, {"id": "Other", "actuary_years": 76.4}, {"id": "Reinsurance", "actuary_years": 69.1}, {"id": "Asset Management", "actuary_years": 48.8}, {"id": "Investment Management", "actuary_years": 38.0}, {"id": "Banking", "actuary_years": 33.8}, {"id": "Technology", "actuary_years": 27.6}, {"id": "Public Sector", "actuary_years": 16.1}, {"id": "Academia", "actuary_years": 15.4}, {"id": "Investment Banking / Corporate Finance", "actuary_years": 8.6}, {"id": "Healthcare", "actuary_years": 6.7}, {"id": "Regulator", "actuary_years": 5.5}, {"id": "Education / Academia", "actuary_years": 4.3}], "edges": [{"source": "IFoA", "target": "Insurance", "count": 51, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Consulting", "count": 28, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Reinsurance", "count": 12, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Other", "count": 5, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Asset Management", "count": 2, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Investment Management", "count": 2, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Banking", "count": 2, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Regulator", "count": 1, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Academia", "count": 1, "is_ifoa_edge": true}, {"source": "Insurance", "target": "Consulting", "count": 16}, {"source": "Consulting", "target": "Insurance", "count": 12}, {"source": "Insurance", "target": "Other", "count": 6}, {"source": "Consulting", "target": "Reinsurance", "count": 4}, {"source": "Consulting", "target": "Other", "count": 4}, {"source": "Other", "target": "Consulting", "count": 3}, {"source": "Other", "target": "Insurance", "count": 3}, {"source": "Consulting", "target": "Banking", "count": 3}, {"source": "Banking", "target": "Consulting", "count": 3}, {"source": "Insurance", "target": "Investment Management", "count": 2}, {"source": "Reinsurance", "target": "Insurance", "count": 2}, {"source": "Insurance", "target": "Technology", "count": 2}, {"source": "Asset Management", "target": "Investment Management", "count": 2}, {"source": "Insurance", "target": "Healthcare", "count": 2}, {"source": "Insurance", "target": "Asset Management", "count": 2}, {"source": "Consulting", "target": "Technology", "count": 2}, {"source": "Technology", "target": "Consulting", "count": 2}, {"source": "Consulting", "target": "Public Sector", "count": 1}, {"source": "Public Sector", "target": "Other", "count": 1}, {"source": "Investment Management", "target": "Reinsurance", "count": 1}, {"source": "Other", "target": "Reinsurance", "count": 1}, {"source": "Insurance", "target": "Reinsurance", "count": 1}, {"source": "Reinsurance", "target": "Asset Management", "count": 1}, {"source": "Consulting", "target": "Regulator", "count": 1}, {"source": "Regulator", "target": "Asset Management", "count": 1}, {"source": "Consulting", "target": "Investment Management", "count": 1}, {"source": "Regulator", "target": "Insurance", "count": 1}, {"source": "Insurance", "target": "Banking", "count": 1}, {"source": "Banking", "target": "Insurance", "count": 1}, {"source": "Consulting", "target": "Asset Management", "count": 1}, {"source": "Investment Management", "target": "Asset Management", "count": 1}, {"source": "Asset Management", "target": "Reinsurance", "count": 1}, {"source": "Reinsurance", "target": "Technology", "count": 1}, {"source": "Technology", "target": "Insurance", "count": 1}, {"source": "Insurance", "target": "Investment Banking / Corporate Finance", "count": 1}, {"source": "Other", "target": "Academia", "count": 1}, {"source": "Academia", "target": "Consulting", "count": 1}, {"source": "Asset Management", "target": "Insurance", "count": 1}, {"source": "Investment Management", "target": "Technology", "count": 1}, {"source": "Reinsurance", "target": "Consulting", "count": 1}, {"source": "Consulting", "target": "Academia", "count": 1}, {"source": "Other", "target": "Banking", "count": 1}, {"source": "Investment Management", "target": "Insurance", "count": 1}, {"source": "Healthcare", "target": "Public Sector", "count": 1}, {"source": "Other", "target": "Education / Academia", "count": 1}], "self_loops": [{"id": "Insurance", "count": 75}, {"id": "Consulting", "count": 32}, {"id": "Reinsurance", "count": 10}, {"id": "Banking", "count": 9}, {"id": "Asset Management", "count": 5}, {"id": "Other", "count": 4}, {"id": "Technology", "count": 4}, {"id": "Investment Banking / Corporate Finance", "count": 1}, {"id": "Public Sector", "count": 1}, {"id": "Investment Management", "count": 1}, {"id": "Education / Academia", "count": 1}], "total_cvs": 104, "total_actuary_years": 1006.1, "total_job_changes": 241}, "company_size": {"nodes": [{"id": "IFoA", "actuary_years": 0, "is_ifoa": true}, {"id": "Large", "actuary_years": 735.3}, {"id": "Medium", "actuary_years": 134.5}, {"id": "Small", "actuary_years": 114.4}, {"id": "Startup", "actuary_years": 14.3}], "edges": [{"source": "IFoA", "target": "Large", "count": 89, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Medium", "count": 12, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Small", "count": 3, "is_ifoa_edge": true}, {"source": "Large", "target": "Medium", "count": 17}, {"source": "Medium", "target": "Large", "count": 13}, {"source": "Large", "target": "Small", "count": 12}, {"source": "Small", "target": "Large", "count": 8}, {"source": "Medium", "target": "Small", "count": 4}, {"source": "Large", "target": "Startup", "count": 4}, {"source": "Small", "target": "Medium", "count": 2}, {"source": "Startup", "target": "Large", "count": 1}, {"source": "Medium", "target": "Startup", "count": 1}, {"source": "Startup", "target": "Medium", "count": 1}, {"source": "Startup", "target": "Small", "count": 1}], "self_loops": [{"id": "Large", "count": 148}, {"id": "Medium", "count": 17}, {"id": "Small", "count": 5}], "total_cvs": 104, "total_actuary_years": 998.5, "total_job_changes": 234}, "role_type": {"nodes": [{"id": "IFoA", "actuary_years": 0, "is_ifoa": true}, {"id": "Director", "actuary_years": 434.5}, {"id": "Manager", "actuary_years": 164.1}, {"id": "Consultant", "actuary_years": 119.4}, {"id": "Senior Manager", "actuary_years": 84.1}, {"id": "C-Suite", "actuary_years": 81.4}, {"id": "Analyst", "actuary_years": 38.3}, {"id": "Senior Consultant", "actuary_years": 32.0}, {"id": "Contractor / Interim", "actuary_years": 21.1}, {"id": "Fellow / Research", "actuary_years": 18.2}, {"id": "Partner", "actuary_years": 5.9}], "edges": [{"source": "IFoA", "target": "Manager", "count": 27, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Consultant", "count": 24, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Director", "count": 19, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Analyst", "count": 14, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Senior Manager", "count": 7, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Senior Consultant", "count": 5, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Contractor / Interim", "count": 2, "is_ifoa_edge": true}, {"source": "IFoA", "target": "C-Suite", "count": 2, "is_ifoa_edge": true}, {"source": "IFoA", "target": "Fellow / Research", "count": 1, "is_ifoa_edge": true}, {"source": "Manager", "target": "Director", "count": 10}, {"source": "Consultant", "target": "Manager", "count": 9}, {"source": "Consultant", "target": "Director", "count": 8}, {"source": "Senior Manager", "target": "Director", "count": 8}, {"source": "Senior Consultant", "target": "Director", "count": 7}, {"source": "Manager", "target": "Senior Manager", "count": 7}, {"source": "Analyst", "target": "Manager", "count": 6}, {"source": "Director", "target": "Consultant", "count": 5}, {"source": "Director", "target": "C-Suite", "count": 5}, {"source": "Senior Consultant", "target": "Manager", "count": 4}, {"source": "C-Suite", "target": "Director", "count": 4}, {"source": "Manager", "target": "Senior Consultant", "count": 3}, {"source": "Analyst", "target": "Director", "count": 3}, {"source": "Consultant", "target": "Senior Consultant", "count": 3}, {"source": "Manager", "target": "Consultant", "count": 3}, {"source": "Director", "target": "Senior Manager", "count": 3}, {"source": "Contractor / Interim", "target": "Senior Consultant", "count": 2}, {"source": "Director", "target": "Manager", "count": 2}, {"source": "Consultant", "target": "Contractor / Interim", "count": 2}, {"source": "Analyst", "target": "Consultant", "count": 2}, {"source": "Senior Manager", "target": "Manager", "count": 2}, {"source": "Analyst", "target": "Senior Consultant", "count": 2}, {"source": "Manager", "target": "Analyst", "count": 2}, {"source": "Senior Consultant", "target": "Senior Manager", "count": 2}, {"source": "Director", "target": "Fellow / Research", "count": 2}, {"source": "Director", "target": "Partner", "count": 2}, {"source": "Director", "target": "Senior Consultant", "count": 2}, {"source": "Manager", "target": "Contractor / Interim", "count": 2}, {"source": "Senior Manager", "target": "Contractor / Interim", "count": 1}, {"source": "Contractor / Interim", "target": "Analyst", "count": 1}, {"source": "Senior Manager", "target": "Consultant", "count": 1}, {"source": "Senior Consultant", "target": "Consultant", "count": 1}, {"source": "Consultant", "target": "Analyst", "count": 1}, {"source": "Consultant", "target": "Fellow / Research", "count": 1}, {"source": "Fellow / Research", "target": "Senior Consultant", "count": 1}, {"source": "Consultant", "target": "Senior Manager", "count": 1}, {"source": "Fellow / Research", "target": "Consultant", "count": 1}, {"source": "Consultant", "target": "C-Suite", "count": 1}, {"source": "Partner", "target": "Director", "count": 1}, {"source": "Senior Consultant", "target": "C-Suite", "count": 1}, {"source": "C-Suite", "target": "Senior Consultant", "count": 1}, {"source": "Senior Manager", "target": "Partner", "count": 1}, {"source": "Manager", "target": "C-Suite", "count": 1}, {"source": "Contractor / Interim", "target": "Consultant", "count": 1}, {"source": "Contractor / Interim", "target": "Manager", "count": 1}, {"source": "Contractor / Interim", "target": "Senior Manager", "count": 1}], "self_loops": [{"id": "Director", "count": 58}, {"id": "Manager", "count": 17}, {"id": "Consultant", "count": 10}, {"id": "Senior Manager", "count": 6}, {"id": "C-Suite", "count": 6}, {"id": "Analyst", "count": 5}, {"id": "Senior Consultant", "count": 1}, {"id": "Contractor / Interim", "count": 1}], "total_cvs": 101, "total_actuary_years": 999.0, "total_job_changes": 234}};
+let graphData = allGraphData['practice_area'];
+
+// ── Dimensions ──────────────────────────────────────────────────────────────
+// W/H read live so the centre is always accurate
+function getW() { return window.innerWidth; }
+function getH() { return window.innerHeight; }
+
+const svg = d3.select("#graph");
+
+// ── Defs: arrowhead markers (one per stroke width bucket) ───────────────────
+const defs = svg.append("defs");
+
+// ── Per-source bucketed opacity (4 buckets per source node) ──────────────
+// Opacity encodes transition force: fully opaque = most common, faint = rare.
+const BUCKET_OPACITIES = [0.12, 0.32, 0.62, 1.0];
+
+// ── Module-level refs (set by buildGraph, used by resize) ────────────────────
+let simulation = null;
+let ifoa_node = null;
+let maxYears = 0;
+let radiusScale = d3.scaleSqrt().domain([0, 1]).range([18, 80]);
+
+function buildGraph(data) {
+  graphData = data;
+
+  // Update stats panel
+  document.getElementById('stat-cvs').textContent = graphData.total_cvs + ' CVs';
+  document.getElementById('stat-years').textContent = graphData.total_actuary_years + ' yrs';
+  document.getElementById('stat-changes').textContent = graphData.total_job_changes;
+
+  // Recalculate radius scale for new data
+  maxYears = d3.max(graphData.nodes, d => d.actuary_years);
+  radiusScale = d3.scaleSqrt().domain([0, maxYears]).range([18, 80]);
+
+  // Stop existing simulation
+  if (simulation) simulation.stop();
+
+  // Clear previous graph content (keep defs)
+  svg.selectAll("g").remove();
+
+// Build total departures per source (edges + self-loops) for force calculation
+const departureTotals = {};
+graphData.edges.forEach(e => {
+  const src = e.source;
+  departureTotals[src] = (departureTotals[src] || 0) + e.count;
+});
+graphData.self_loops.forEach(s => {
+  departureTotals[s.id] = (departureTotals[s.id] || 0) + s.count;
+});
+// Build selfLoopMap early (needed for opacity bucketing below)
+const selfLoopMap = {};
+graphData.self_loops.forEach(s => { selfLoopMap[s.id] = s; });
+// Build bucketed opacity lookup keyed by "source->target"
+const edgeOpacityMap = {};
+const edgeForceMap = {};
+
+// Group edges by source
+const edgesBySource = {};
+graphData.edges.forEach(e => {
+  if (!edgesBySource[e.source]) edgesBySource[e.source] = [];
+  edgesBySource[e.source].push(e);
+});
+
+const selfLoopOpacityMap = {};
+const selfLoopForceMap = {};
+Object.entries(edgesBySource).forEach(([src, srcEdges]) => {
+  // Include the self-loop (if any) as an entry so it's bucketed on the same scale
+  const sl = selfLoopMap[src];
+  const allMoves = [...srcEdges];
+  if (sl) allMoves.push({ source: src, target: src, count: sl.count, _isSelf: true });
+  const total = departureTotals[src] || 1;
+  const sorted = [...allMoves].sort((a, b) => b.count - a.count);
+  const n = sorted.length;
+  sorted.forEach((e, i) => {
+    const bucket = Math.min(3, Math.floor(i / n * 4));
+    const opacityIdx = 3 - bucket;
+    if (e._isSelf) {
+      selfLoopOpacityMap[src] = BUCKET_OPACITIES[opacityIdx];
+      selfLoopForceMap[src] = +(e.count / total).toFixed(2);
+    } else {
+      const key = `${e.source}->${e.target}`;
+      edgeOpacityMap[key] = BUCKET_OPACITIES[opacityIdx];
+      edgeForceMap[key] = +(e.count / total).toFixed(2);
+    }
+  });
+});
+// For nodes that only have a self-loop (no cross-area edges), bucket separately
+graphData.self_loops.forEach(s => {
+  if (!(s.id in selfLoopOpacityMap)) {
+    const total = departureTotals[s.id] || 1;
+    selfLoopOpacityMap[s.id] = BUCKET_OPACITIES[3]; // only move = maximum opacity
+    selfLoopForceMap[s.id] = +(s.count / total).toFixed(2);
+  }
+});
+
+function getEdgeOpacity(d) {
+  const src = d.source.id || d.source;
+  const tgt = d.target.id || d.target;
+  return edgeOpacityMap[`${src}->${tgt}`] || BUCKET_OPACITIES[0];
+}
+function getEdgeForce(d) {
+  const src = d.source.id || d.source;
+  const tgt = d.target.id || d.target;
+  return edgeForceMap[`${src}->${tgt}`] || 0;
+}
+
+// IFoA edge opacities: bucket within IFoA outgoing edges
+const ifoaEdgesRaw = graphData.edges.filter(e => e.is_ifoa_edge);
+const ifoaTotal = ifoaEdgesRaw.reduce((s, e) => s + e.count, 0);
+const ifoaSorted = [...ifoaEdgesRaw].sort((a, b) => b.count - a.count);
+const ifoaOpacityMap = {};
+const ifoaForceMap = {};
+ifoaSorted.forEach((e, i) => {
+  const bucket = Math.min(3, Math.floor(i / ifoaSorted.length * 4));
+  ifoaOpacityMap[e.target] = BUCKET_OPACITIES[3 - bucket];
+  ifoaForceMap[e.target] = +(e.count / ifoaTotal).toFixed(2);
+});
+
+function getIfoaEdgeOpacity(d) {
+  const tgt = d.target.id || d.target;
+  return ifoaOpacityMap[tgt] || BUCKET_OPACITIES[0];
+}
+function getIfoaEdgeForce(d) {
+  const tgt = d.target.id || d.target;
+  return ifoaForceMap[tgt] || 0;
+}
+
+// Create markers for multiple sizes
+[1, 2, 3, 4, 5].forEach(w => {
+  defs.append("marker")
+    .attr("id", `arrow-${w}`)
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 10)
+    .attr("refY", 0)
+    .attr("markerWidth", 6)
+    .attr("markerHeight", 6)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5")
+    .attr("fill", "#6b9ab8")
+    .attr("opacity", 0.85);
+});
+
+// Glow filter for nodes
+const filter = defs.append("filter").attr("id", "glow");
+filter.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "coloredBlur");
+const feMerge = filter.append("feMerge");
+feMerge.append("feMergeNode").attr("in", "coloredBlur");
+feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+// ── Colour palette ───────────────────────────────────────────────────────────
+const palette = {
+  // Practice areas
+  "Life":                                         "#4f8ef7",
+  "Pensions":                                     "#a78bfa",
+  "General Insurance":                            "#34d399",
+  "Risk Management":                              "#f59e0b",
+  "AI and Emerging Technologies":                 "#f472b6",
+  "Finance and Investment":                       "#38bdf8",
+  "Health and Care":                              "#fb923c",
+  "Actuarial Consulting (practice area unknown)": "#94a3b8",
+  "Education / Academia":                         "#a3e635",
+  "Technology":                                   "#22d3ee",
+  "Regulatory / Public Policy":                   "#e879f9",
+  // Industries
+  "Insurance":                                    "#4f8ef7",
+  "Consulting":                                   "#34d399",
+  "Reinsurance":                                  "#f59e0b",
+  "Asset Management":                             "#a78bfa",
+  "Investment Management":                        "#38bdf8",
+  "Banking":                                      "#fb923c",
+  "Public Sector":                                "#a3e635",
+  "Academia":                                     "#e879f9",
+  "Investment Banking / Corporate Finance":       "#22d3ee",
+  "Healthcare":                                   "#f472b6",
+  "Regulator":                                    "#fbbf24",
+  "Other":                                        "#94a3b8",
+  // Company sizes
+  "Large":                                        "#4f8ef7",
+  "Medium":                                       "#34d399",
+  "Small":                                        "#f59e0b",
+  "Startup":                                      "#f472b6",
+  // Role types
+  "Director":                                     "#4f8ef7",
+  "Manager":                                      "#34d399",
+  "Consultant":                                   "#a78bfa",
+  "Senior Manager":                               "#f59e0b",
+  "C-Suite":                                      "#f472b6",
+  "Analyst":                                      "#38bdf8",
+  "Senior Consultant":                            "#fb923c",
+  "Contractor / Interim":                         "#94a3b8",
+  "Fellow / Research":                            "#a3e635",
+  "Partner":                                      "#22d3ee"
+};
+
+// ── Node radius scale ────────────────────────────────────────────────────────
+// (maxYears and radiusScale updated at top of buildGraph)
+
+// ── Tooltip helper ───────────────────────────────────────────────────────────
+const tooltip = d3.select("#tooltip");
+
+function showTooltip(html, event) {
+  tooltip.html(html)
+    .style("opacity", 1)
+    .style("left", (event.clientX + 16) + "px")
+    .style("top",  (event.clientY - 10) + "px");
+}
+function hideTooltip() {
+  tooltip.style("opacity", 0);
+}
+
+// ── Build simulation ─────────────────────────────────────────────────────────
+const nodes = graphData.nodes.map(d => ({ ...d }));
+const edges = graphData.edges.filter(e => !e.is_ifoa_edge).map(d => ({ ...d }));
+const ifoa_edges = graphData.edges.filter(e => e.is_ifoa_edge).map(d => ({ ...d }));
+const all_edges = [...ifoa_edges, ...edges];
+let selectedNodeId = null;
+let loopsAll = null;
+
+function isNodeSelected(d) {
+  return selectedNodeId === d.id;
+}
+
+function isEdgeHighlighted(d) {
+  const src = d.source.id || d.source;
+  const tgt = d.target.id || d.target;
+  return selectedNodeId !== null && (src === selectedNodeId || tgt === selectedNodeId);
+}
+
+function isSelfLoopHighlighted(d) {
+  return selectedNodeId !== null && d.id === selectedNodeId;
+}
+
+function getNodeFillOpacity(d) {
+  if (isNodeSelected(d)) return d.is_ifoa ? 0.3 : 0.42;
+  return d.is_ifoa ? 0.12 : 0.18;
+}
+
+function boostOpacity(baseOpacity) {
+  return Math.min(1, baseOpacity + 0.22);
+}
+
+function getHighlightedIfoaOpacity(d) {
+  return boostOpacity(getIfoaEdgeOpacity(d));
+}
+
+function getHighlightedEdgeOpacity(d) {
+  return boostOpacity(getEdgeOpacity(d));
+}
+
+function getHighlightedSelfLoopOpacity(d) {
+  return boostOpacity(selfLoopOpacityMap[d.id] || BUCKET_OPACITIES[0]);
+}
+
+function updateSelectionStyles() {
+  nodeContainers.select('.node-circle')
+    .attr('fill-opacity', d => getNodeFillOpacity(d))
+    .attr('stroke-width', d => isNodeSelected(d) ? (d.is_ifoa ? 3.5 : 3) : (d.is_ifoa ? 2.5 : 2))
+    .style('filter', d => isNodeSelected(d) ? 'url(#glow) saturate(1.35) brightness(1.15)' : 'url(#glow)');
+
+  nodeContainers.selectAll('.node-label')
+    .style('fill', d => isNodeSelected(d) ? '#ffffff' : (d.is_ifoa ? '#fbbf24' : (palette[d.id] || '#f1f5f9')));
+
+  ifoaEdgePaths
+    .attr('opacity', d => isEdgeHighlighted(d) ? getHighlightedIfoaOpacity(d) : getIfoaEdgeOpacity(d))
+    .attr('stroke-width', d => isEdgeHighlighted(d) ? 3 : 2)
+    .attr('stroke-dasharray', d => isEdgeHighlighted(d) ? null : '6 3')
+    .style('filter', d => isEdgeHighlighted(d) ? 'saturate(1.35) brightness(1.15)' : null);
+
+  edgePaths
+    .attr('stroke', d => isEdgeHighlighted(d) ? '#bfe5ff' : '#6b9ab8')
+    .attr('opacity', d => isEdgeHighlighted(d) ? getHighlightedEdgeOpacity(d) : getEdgeOpacity(d))
+    .attr('stroke-width', d => isEdgeHighlighted(d) ? 3 : 2)
+    .style('filter', d => isEdgeHighlighted(d) ? 'saturate(1.35) brightness(1.15)' : null);
+
+  if (loopsAll) {
+    loopsAll.select('.self-loop-path')
+      .attr('stroke', d => isSelfLoopHighlighted(d) ? '#bfe5ff' : '#6b9ab8')
+      .attr('opacity', d => isSelfLoopHighlighted(d) ? getHighlightedSelfLoopOpacity(d) : (selfLoopOpacityMap[d.id] || BUCKET_OPACITIES[0]))
+      .attr('stroke-width', d => isSelfLoopHighlighted(d) ? 3 : 2)
+      .style('filter', d => isSelfLoopHighlighted(d) ? 'saturate(1.35) brightness(1.15)' : null);
+  }
+}
+
+function toggleNodeSelection(d) {
+  selectedNodeId = selectedNodeId === d.id ? null : d.id;
+  updateSelectionStyles();
+}
+
+svg.on("click", () => {
+  selectedNodeId = null;
+  updateSelectionStyles();
+});
+
+// Fix IFoA node at centre
+ifoa_node = nodes.find(d => d.is_ifoa);
+if (ifoa_node) { ifoa_node.fx = getW() / 2; ifoa_node.fy = getH() / 2; }
+
+simulation = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(all_edges)
+    .id(d => d.id)
+    .distance(d => {
+      if (d.source.is_ifoa || d.target.is_ifoa) return 391;
+      const sr = radiusScale(d.source.actuary_years || 0);
+      const tr = radiusScale(d.target.actuary_years || 0);
+      return sr + tr + 110;
+    })
+    .strength(0.5))
+  .force("charge", d3.forceManyBody().strength(-1250))
+  .force("collision", d3.forceCollide().radius(d => d.is_ifoa ? 65 : radiusScale(d.actuary_years || 0) + 35));
+
+// ── Render layer: edges first, then nodes ────────────────────────────────────
+const edgeGroup = svg.append("g").attr("class", "edges");
+const nodeGroup = svg.append("g").attr("class", "nodes");
+
+// IFoA edges — distinct amber dashed lines
+const ifoaEdgePaths = edgeGroup.selectAll("path.ifoa-edge")
+  .data(ifoa_edges)
+  .join("path")
+  .attr("class", "edge-path ifoa-edge")
+  .attr("stroke", "#f59e0b")
+  .attr("stroke-width", 2)
+  .attr("opacity", d => getIfoaEdgeOpacity(d))
+  .attr("stroke-dasharray", "6 3")
+  .attr("marker-end", "url(#arrow-2)")
+  .on("mouseover", function(event, d) {
+    d3.select(this).attr("opacity", 1).attr("stroke-dasharray", null);
+    const force = getIfoaEdgeForce(d);
+    showTooltip(
+      `<div class="tt-title">IFoA → ${d.target.id}</div>
+       <div class="tt-row">Transition force: <span>${(+force).toFixed(2)}</span></div>`,
+      event
+    );
+  })
+  .on("mousemove", (event) => {
+    tooltip.style("left", (event.clientX + 16) + "px").style("top", (event.clientY - 10) + "px");
+  })
+  .on("mouseout", function(event, d) {
+    d3.select(this).attr("opacity", isEdgeHighlighted(d) ? getHighlightedIfoaOpacity(d) : getIfoaEdgeOpacity(d)).attr("stroke-width", isEdgeHighlighted(d) ? 3 : 2).attr("stroke-dasharray", isEdgeHighlighted(d) ? null : "6 3");
+    hideTooltip();
+  });
+
+const ifoaEdgeLabels = edgeGroup.selectAll("text.ifoa-edge-label")
+  .data(ifoa_edges)
+  .join("text")
+  .attr("class", "edge-label ifoa-edge-label")
+  .attr("text-anchor", "middle")
+  .attr("font-size", "11px")
+  .attr("fill", "#f59e0b")
+  .attr("font-weight", "600")
+  .attr("dy", -5)
+  .text("");  // thickness encodes count
+
+// Regular cross-area edges
+const edgePaths = edgeGroup.selectAll("path.career-edge")
+  .data(edges)
+  .join("path")
+  .attr("class", "edge-path career-edge")
+  .attr("stroke", "#6b9ab8")
+  .attr("stroke-width", 2)
+  .attr("opacity", d => getEdgeOpacity(d))
+  .attr("marker-end", "url(#arrow-2)")
+  .on("mouseover", function(event, d) {
+    d3.select(this).attr("stroke", "#a8d4f0").attr("opacity", 1);
+    const force = getEdgeForce(d);
+    showTooltip(
+      `<div class="tt-title">${d.source.id} → ${d.target.id}</div>
+       <div class="tt-row">Transition force: <span>${(+force).toFixed(2)}</span></div>`,
+      event
+    );
+  })
+  .on("mousemove", (event) => {
+    tooltip.style("left", (event.clientX + 16) + "px").style("top", (event.clientY - 10) + "px");
+  })
+  .on("mouseout", function(event, d) {
+    d3.select(this).attr("stroke", isEdgeHighlighted(d) ? "#bfe5ff" : "#6b9ab8").attr("opacity", isEdgeHighlighted(d) ? getHighlightedEdgeOpacity(d) : getEdgeOpacity(d)).attr("stroke-width", isEdgeHighlighted(d) ? 3 : 2);
+    hideTooltip();
+  });
+
+const edgeLabels = edgeGroup.selectAll("text.career-edge-label")
+  .data(edges)
+  .join("text")
+  .attr("class", "edge-label career-edge-label")
+  .attr("text-anchor", "middle")
+  .attr("font-size", "11px")
+  .attr("fill", "#a8d4f0")
+  .attr("font-weight", "600")
+  .attr("dy", -5)
+  .text("");  // thickness encodes count
+
+// ── Self-loops (same practice area transitions) ──────────────────
+const selfLoopGroup = svg.append('g').attr('class', 'self-loops');
+
+// ── Nodes ────────────────────────────────────────────────────────────────────
+nodeContainers = nodeGroup.selectAll("g.node")
+  .data(nodes)
+  .join("g")
+  .attr("class", "node")
+  .call(d3.drag()
+    .on("start", (event, d) => {
+      if (d.is_ifoa) return;
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      d.fx = d.x; d.fy = d.y;
+    })
+    .on("drag", (event, d) => {
+      if (d.is_ifoa) return;
+      d.fx = event.x; d.fy = event.y;
+    })
+    .on("end", (event, d) => {
+      if (d.is_ifoa) return;
+      if (!event.active) simulation.alphaTarget(0);
+      d.fx = null; d.fy = null;
+    })
+  );
+
+// Outer glow ring
+nodeContainers.append("circle")
+  .attr("r", d => d.is_ifoa ? 46 : radiusScale(d.actuary_years || 0) + 6)
+  .attr("fill", "none")
+  .attr("stroke", d => d.is_ifoa ? "#fbbf24" : (palette[d.id] || "#4f8ef7"))
+  .attr("stroke-width", d => d.is_ifoa ? 2 : 1)
+  .attr("opacity", d => d.is_ifoa ? 0.5 : 0.25);
+
+// Main circle
+nodeContainers.append("circle")
+  .attr("class", "node-circle")
+  .attr("r", d => d.is_ifoa ? 40 : radiusScale(d.actuary_years || 0))
+  .attr("fill", d => d.is_ifoa ? "#fbbf24" : (palette[d.id] || "#4f8ef7"))
+  .attr("fill-opacity", d => d.is_ifoa ? 0.12 : 0.18)
+  .attr("stroke", d => d.is_ifoa ? "#fbbf24" : (palette[d.id] || "#4f8ef7"))
+  .attr("stroke-width", d => d.is_ifoa ? 2.5 : 2)
+  .attr("filter", "url(#glow)")
+  .on("mouseover", function(event, d) {
+    d3.select(this).attr("fill-opacity", 0.35);
+    if (d.is_ifoa) {
+      showTooltip(
+        `<div class="tt-title">IFoA Qualification</div>
+         <div class="tt-row">Sample: <span>95 CVs</span></div>
+         <div class="tt-row">Mapped first roles: <span>72</span></div>
+         <div class="tt-row">Arrows show first<br>post-qualification role</div>`,
+        event
+      );
+    } else {
+      showTooltip(
+        `<div class="tt-title">${d.id}</div>
+         <div class="tt-row">Actuary-years: <span>${Math.round(d.actuary_years)}</span></div>`,
+        event
+      );
+    }
+  })
+  .on("mousemove", (event) => {
+    tooltip.style("left", (event.clientX + 16) + "px").style("top", (event.clientY - 10) + "px");
+  })
+  .on("mouseout", function(event, d) {
+    d3.select(this).attr("fill-opacity", getNodeFillOpacity(d));
+    hideTooltip();
+  });
+
+nodeContainers.select(".node-circle")
+  .on("click", function(event, d) {
+    event.stopPropagation();
+    toggleNodeSelection(d);
+  });
+
+// Node labels
+function wrapLabel(id) {
+  if (id === "IFoA") return ["IFoA", "Qualified"];
+  const parts = id.split(" ");
+  if (parts.length <= 2) return [id];
+  // Practice areas
+  if (id === "AI and Emerging Technologies") return ["AI & Emerging", "Technologies"];
+  if (id === "Finance and Investment") return ["Finance &", "Investment"];
+  if (id === "General Insurance") return ["General", "Insurance"];
+  if (id === "Health and Care") return ["Health", "& Care"];
+  if (id === "Risk Management") return ["Risk", "Management"];
+  if (id === "Actuarial Consulting (practice area unknown)") return ["Actuarial", "Consulting"];
+  if (id === "Regulatory / Public Policy") return ["Regulatory /", "Public Policy"];
+  // Industries
+  if (id === "Asset Management") return ["Asset", "Management"];
+  if (id === "Investment Management") return ["Investment", "Management"];
+  if (id === "Investment Banking / Corporate Finance") return ["Inv. Banking /", "Corp. Finance"];
+  if (id === "Public Sector") return ["Public", "Sector"];
+  if (id === "Education / Academia") return ["Education /", "Academia"];
+  // Role types
+  if (id === "Senior Manager") return ["Senior", "Manager"];
+  if (id === "Senior Consultant") return ["Senior", "Consultant"];
+  if (id === "Contractor / Interim") return ["Contractor /", "Interim"];
+  if (id === "Fellow / Research") return ["Fellow /", "Research"];
+  return [id];
+}
+
+nodeContainers.each(function(d) {
+  const g = d3.select(this);
+  const lines = wrapLabel(d.id);
+  const r = d.is_ifoa ? 40 : radiusScale(d.actuary_years || 0);
+  const lineH = 14;
+  const totalH = lines.length * lineH;
+  const startY = -(totalH / 2) + lineH * 0.6;  // 0.6em offset centres text visually
+  lines.forEach((line, i) => {
+    g.append("text")
+      .attr("class", "node-label")
+      .attr("text-anchor", "middle")
+      .attr("y", startY + i * lineH)
+      .attr("font-size", d.is_ifoa ? "15px" : (r > 50 ? "13px" : r > 30 ? "12px" : "11px"))
+      .attr("font-weight", "700")
+      .style("fill", d.is_ifoa ? "#fbbf24" : (palette[d.id] || "#f1f5f9"))
+      .text(line);
+  });
+});
+
+// ── Tick ─────────────────────────────────────────────
+function edgePath(d, sourceR, targetR, curve) {
+  const dx = d.target.x - d.source.x;
+  const dy = d.target.y - d.source.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const sx = d.source.x + dx / dist * (sourceR + 3);
+  const sy = d.source.y + dy / dist * (sourceR + 3);
+  const ex = d.target.x - dx / dist * (targetR + 12);
+  const ey = d.target.y - dy / dist * (targetR + 12);
+  if (!curve) return `M${sx},${sy} L${ex},${ey}`;
+  const mx = (sx + ex) / 2 - dy / dist * 40;
+  const my = (sy + ey) / 2 + dx / dist * 40;
+  return `M${sx},${sy} Q${mx},${my} ${ex},${ey}`;
+}
+function edgeMidX(d, curve) {
+  const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  return curve
+    ? (d.source.x + d.target.x) / 2 - dy / dist * 40
+    : (d.source.x + d.target.x) / 2;
+}
+function edgeMidY(d, curve) {
+  const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  return curve
+    ? (d.source.y + d.target.y) / 2 + dx / dist * 40
+    : (d.source.y + d.target.y) / 2;
+}
+
+simulation.on("tick", () => {
+  // IFoA edges — straight lines from centre
+  ifoaEdgePaths.attr("d", d => edgePath(d, 40, radiusScale(d.target.actuary_years || 0), false));
+  ifoaEdgeLabels
+    .attr("x", d => edgeMidX(d, false))
+    .attr("y", d => edgeMidY(d, false));
+
+  // Career transition edges — curved
+  edgePaths.attr("d", d => edgePath(
+    d,
+    radiusScale(d.source.actuary_years || 0),
+    radiusScale(d.target.actuary_years || 0),
+    true
+  ));
+  edgeLabels
+    .attr("x", d => edgeMidX(d, true))
+    .attr("y", d => edgeMidY(d, true));
+
+  nodeContainers.attr("transform", d => `translate(${d.x},${d.y})`);
+
+  // Self-loops: circular arcs on each practice-area node
+  const selfLoopData = nodes.filter(d => !d.is_ifoa && selfLoopMap[d.id]);
+
+  const loops = selfLoopGroup.selectAll("g.self-loop")
+    .data(selfLoopData, d => d.id);
+  const loopsEnter = loops.enter().append("g").attr("class", "self-loop");
+  loopsEnter.append("path").attr("class", "self-loop-path").attr("fill", "none").attr("stroke-linecap", "round");
+  loopsEnter.append("path").attr("class", "self-loop-arrow");
+  loopsEnter.append("text").attr("class", "self-loop-label").attr("text-anchor", "middle").attr("dominant-baseline", "central").attr("font-size", "9px").attr("font-weight", "700").style("pointer-events", "none");
+  loopsAll = loopsEnter.merge(loops);
+
+  loopsAll.each(function(d) {
+    const g   = d3.select(this);
+    const sl  = selfLoopMap[d.id];
+    const r   = radiusScale(d.actuary_years || 0);
+    const selfOpacity = selfLoopOpacityMap[d.id] || BUCKET_OPACITIES[0];
+
+    // Two attachment points on node circumference, spread ±30° around top-right (-45°).
+    const midAngle = -Math.PI / 4;
+    const spread   = Math.PI / 6;
+    const a1 = midAngle - spread;
+    const a2 = midAngle + spread;
+    const p1x = d.x + r * Math.cos(a1);
+    const p1y = d.y + r * Math.sin(a1);
+    const p2x = d.x + r * Math.cos(a2);
+    const p2y = d.y + r * Math.sin(a2);
+    const bulge    = r * 0.85;
+    const outX     = d.x + (r + bulge) * Math.cos(midAngle);
+    const outY     = d.y + (r + bulge) * Math.sin(midAngle);
+    const cpSpread = r * 0.3;
+    const cp1x = outX + cpSpread * Math.cos(midAngle - Math.PI / 2);
+    const cp1y = outY + cpSpread * Math.sin(midAngle - Math.PI / 2);
+    const cp2x = outX + cpSpread * Math.cos(midAngle + Math.PI / 2);
+    const cp2y = outY + cpSpread * Math.sin(midAngle + Math.PI / 2);
+
+    // Same colour/width as career edges; SVG marker arrow
+    g.select(".self-loop-path")
+      .attr("d", `M${p1x},${p1y} C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2x},${p2y}`)
+      .attr("stroke", "#6b9ab8")
+      .attr("stroke-width", 2)
+      .attr("opacity", selfOpacity)
+      .attr("marker-end", "url(#arrow-2)");
+
+    // Hide the separate hand-drawn arrow (marker does the job now)
+    g.select(".self-loop-arrow").attr("d", "");
+  });
+
+  // Hover on whole group — matches career edge behaviour exactly
+  loopsAll
+    .on("mouseover", function(event, d) {
+      d3.select(this).select(".self-loop-path")
+        .attr("stroke", "#a8d4f0").attr("opacity", 1);
+      const sl = selfLoopMap[d.id];
+      const selfForce = +(sl.count / (departureTotals[d.id] || 1)).toFixed(2);
+      showTooltip(
+        `<div class="tt-title">${d.id} → ${d.id}</div>
+         <div class="tt-row">Transition force: <span>${(+selfForce).toFixed(2)}</span></div>`,
+        event
+      );
+    })
+    .on("mousemove", (event) => {
+      tooltip.style("left", (event.clientX + 16) + "px").style("top", (event.clientY - 10) + "px");
+    })
+    .on("mouseout", function(event, d) {
+      d3.select(this).select(".self-loop-path")
+        .attr("stroke", isSelfLoopHighlighted(d) ? "#bfe5ff" : "#6b9ab8")
+        .attr("opacity", isSelfLoopHighlighted(d) ? getHighlightedSelfLoopOpacity(d) : (selfLoopOpacityMap[d.id] || BUCKET_OPACITIES[0]))
+        .attr("stroke-width", isSelfLoopHighlighted(d) ? 3 : 2);
+      hideTooltip();
+    });
+
+  updateSelectionStyles();
+});
+} // end buildGraph
+
+// ── Initial render ───────────────────────────────────────────────────────────
+buildGraph(graphData);
+
+// ── Dimension selector ───────────────────────────────────────────────────────
+document.getElementById('dimension-select').addEventListener('change', function() {
+  const dim = this.value;
+  buildGraph(allGraphData[dim]);
+});
+
+// ── Resize ───────────────────────────────────────────
+window.addEventListener("resize", () => {
+  // CSS handles SVG size; just re-centre the IFoA node
+  if (ifoa_node) { ifoa_node.fx = getW() / 2; ifoa_node.fy = getH() / 2; }
+  if (simulation) simulation.alpha(0.3).restart();
+});
+
+</script>
+</body>
+</html>
