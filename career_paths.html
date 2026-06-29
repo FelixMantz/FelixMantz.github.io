@@ -178,6 +178,12 @@
   }
   #dimension-select:hover { border-color: #4f8ef7; }
   #dimension-select option { background: #1e2433; }
+
+@media (max-width: 768px) {
+    #stats, #legend {
+      display: none;
+    }
+  }
 </style>
 </head>
 <body>
@@ -491,22 +497,22 @@ function updateSelectionStyles() {
     .style('fill', d => isNodeSelected(d) ? '#ffffff' : (d.is_ifoa ? '#fbbf24' : (palette[d.id] || '#f1f5f9')));
 
   ifoaEdgePaths
-    .attr('opacity', d => isEdgeHighlighted(d) ? getHighlightedIfoaOpacity(d) : getIfoaEdgeOpacity(d))
-    .attr('stroke-width', d => isEdgeHighlighted(d) ? 3 : 2)
+    .attr('opacity', d => isEdgeHighlighted(d) ? getHighlightedIfoaOpacity(d) : (selectedNodeId ? 0.15 : getIfoaEdgeOpacity(d)))
+    .attr('stroke-width', d => isEdgeHighlighted(d) ? 2 : 2)
     .attr('stroke-dasharray', d => isEdgeHighlighted(d) ? null : '6 3')
     .style('filter', d => isEdgeHighlighted(d) ? 'saturate(1.35) brightness(1.15)' : null);
 
   edgePaths
     .attr('stroke', d => isEdgeHighlighted(d) ? '#bfe5ff' : '#6b9ab8')
-    .attr('opacity', d => isEdgeHighlighted(d) ? getHighlightedEdgeOpacity(d) : getEdgeOpacity(d))
-    .attr('stroke-width', d => isEdgeHighlighted(d) ? 3 : 2)
+    .attr('opacity', d => isEdgeHighlighted(d) ? getHighlightedEdgeOpacity(d) : (selectedNodeId ? 0.15 : getEdgeOpacity(d)))
+    .attr('stroke-width', d => isEdgeHighlighted(d) ? 2 : 2)
     .style('filter', d => isEdgeHighlighted(d) ? 'saturate(1.35) brightness(1.15)' : null);
 
   if (loopsAll) {
     loopsAll.select('.self-loop-path')
       .attr('stroke', d => isSelfLoopHighlighted(d) ? '#bfe5ff' : '#6b9ab8')
-      .attr('opacity', d => isSelfLoopHighlighted(d) ? getHighlightedSelfLoopOpacity(d) : (selfLoopOpacityMap[d.id] || BUCKET_OPACITIES[0]))
-      .attr('stroke-width', d => isSelfLoopHighlighted(d) ? 3 : 2)
+      .attr('opacity', d => isSelfLoopHighlighted(d) ? getHighlightedSelfLoopOpacity(d) : (selectedNodeId ? 0.15 : (selfLoopOpacityMap[d.id] || BUCKET_OPACITIES[0])))
+      .attr('stroke-width', d => isSelfLoopHighlighted(d) ? 2 : 2)
       .style('filter', d => isSelfLoopHighlighted(d) ? 'saturate(1.35) brightness(1.15)' : null);
   }
 }
@@ -529,7 +535,8 @@ simulation = d3.forceSimulation(nodes)
   .force("link", d3.forceLink(all_edges)
     .id(d => d.id)
     .distance(d => {
-      if (d.source.is_ifoa || d.target.is_ifoa) return 391;
+      // Reduce orbit distance on screens narrower than 768px
+      if (d.source.is_ifoa || d.target.is_ifoa) return window.innerWidth < 768 ? 150 : 300;
       const sr = radiusScale(d.source.actuary_years || 0);
       const tr = radiusScale(d.target.actuary_years || 0);
       return sr + tr + 110;
@@ -663,10 +670,7 @@ nodeContainers.append("circle")
     d3.select(this).attr("fill-opacity", 0.35);
     if (d.is_ifoa) {
       showTooltip(
-        `<div class="tt-title">IFoA Qualification</div>
-         <div class="tt-row">Sample: <span>95 CVs</span></div>
-         <div class="tt-row">Mapped first roles: <span>72</span></div>
-         <div class="tt-row">Arrows show first<br>post-qualification role</div>`,
+        `<div class="tt-title">IFoA Qualification</div>`,
         event
       );
     } else {
